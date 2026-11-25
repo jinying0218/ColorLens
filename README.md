@@ -4,6 +4,10 @@
 
 需要 macOS 13 或更新版本。使用 SwiftUI 和 AppKit，无第三方依赖。
 
+## 下载
+
+在 [GitHub Releases](https://github.com/jinying0218/ColorLens/releases/latest) 下载 Apple 芯片版安装包，解压后将 `ColorLens.app` 拖到“应用程序”。目前未提供 Intel 版本。首次打开可能需要按照发布说明确认开发者验证提示。
+
 ## 使用
 
 - 输入 6 位 RGB 或 8 位颜色，8 位格式需明确选择 ARGB 或 RGBA，默认 ARGB。
