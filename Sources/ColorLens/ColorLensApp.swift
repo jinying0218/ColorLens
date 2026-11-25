@@ -26,6 +26,7 @@ struct ContentView: View {
     @State private var error: String?
     @State private var copied: String?
     @State private var sampler = NSColorSampler()
+    @AppStorage("preciseAlpha") private var preciseAlpha = false
 
     private var color: Color {
         Color(.sRGB, red: Double(value.red)/255, green: Double(value.green)/255,
@@ -64,16 +65,37 @@ struct ContentView: View {
                 HStack {
                     Text("透明度")
                     Spacer()
-                    Text(String(format: "%.1f%%  ·  A = %02X", Double(value.alpha)/255*100, Int(value.alpha)))
+                    Text(String(format: preciseAlpha ? "%.1f%%  ·  A = %02X" : "%.0f%%  ·  A = %02X", Double(value.alpha)/255*100, Int(value.alpha)))
                         .monospacedDigit().foregroundStyle(.secondary)
                 }
-                Slider(value: Binding(get: { Double(value.alpha) }, set: {
-                    value.alpha = UInt8($0.rounded())
-                    if format == .rgb { format = .argb }
-                    input = value.hex(format)
-                    error = nil
-                }), in: 0...255, step: 1)
+                Slider(value: Binding(get: {
+                    preciseAlpha ? Double(value.alpha) : (Double(value.alpha)/255*100).rounded()
+                }, set: {
+                    setAlpha(UInt8((preciseAlpha ? $0 : $0/100*255).rounded()))
+                }), in: 0...(preciseAlpha ? 255 : 100), step: 1)
                 .disabled(error != nil)
+                HStack(spacing: 0) {
+                    ForEach(0...10, id: \.self) { index in
+                        let percent = index * 10
+                        Button {
+                            setAlpha(UInt8((Double(percent)/100*255).rounded()))
+                        } label: {
+                            VStack(spacing: 4) {
+                                Rectangle().frame(width: 1, height: 6)
+                                Text("\(percent)%").font(.system(size: 10)).monospacedDigit()
+                            }
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Int((Double(value.alpha)/255*100).rounded()) == percent ? Color.accentColor : Color.secondary)
+                        .accessibilityLabel("设置透明度为 \(percent)%")
+                    }
+                }
+                .disabled(error != nil)
+                Toggle("精确透明度", isOn: $preciseAlpha)
+                    .toggleStyle(.checkbox).font(.caption)
+                    .help("开启后按 Alpha 原始值 0～255 调整，并显示一位小数。切换开关不会改变当前颜色。")
             }
             VStack(spacing: 10) {
                 ForEach(HexFormat.allCases, id: \.self) { item in
@@ -125,6 +147,14 @@ struct ContentView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         copied = key
+    }
+
+    private func setAlpha(_ alpha: UInt8) {
+        value.alpha = alpha
+        if format == .rgb { format = .argb }
+        input = value.hex(format)
+        error = nil
+        copied = nil
     }
 
     private func sample() {
