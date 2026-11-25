@@ -68,31 +68,11 @@ struct ContentView: View {
                     Text(String(format: preciseAlpha ? "%.1f%%  ·  A = %02X" : "%.0f%%  ·  A = %02X", Double(value.alpha)/255*100, Int(value.alpha)))
                         .monospacedDigit().foregroundStyle(.secondary)
                 }
-                Slider(value: Binding(get: {
-                    preciseAlpha ? Double(value.alpha) : (Double(value.alpha)/255*100).rounded()
-                }, set: {
-                    setAlpha(UInt8((preciseAlpha ? $0 : $0/100*255).rounded()))
-                }), in: 0...(preciseAlpha ? 255 : 100), step: 1)
-                .disabled(error != nil)
-                HStack(spacing: 0) {
-                    ForEach(0...10, id: \.self) { index in
-                        let percent = index * 10
-                        Button {
-                            setAlpha(UInt8((Double(percent)/100*255).rounded()))
-                        } label: {
-                            VStack(spacing: 4) {
-                                Rectangle().frame(width: 1, height: 6)
-                                Text("\(percent)%").font(.system(size: 10)).monospacedDigit()
-                            }
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Int((Double(value.alpha)/255*100).rounded()) == percent ? Color.accentColor : Color.secondary)
-                        .accessibilityLabel("设置透明度为 \(percent)%")
-                    }
+                OpacitySlider(percent: Double(value.alpha)/255*100,
+                              precise: preciseAlpha, enabled: error == nil) {
+                    setAlpha(UInt8(($0/100*255).rounded()))
                 }
-                .disabled(error != nil)
+                .frame(height: 48)
                 Toggle("精确透明度", isOn: $preciseAlpha)
                     .toggleStyle(.checkbox).font(.caption)
                     .help("开启后按 Alpha 原始值 0～255 调整，并显示一位小数。切换开关不会改变当前颜色。")
