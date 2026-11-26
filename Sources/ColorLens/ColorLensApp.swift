@@ -5,8 +5,9 @@ import ColorCore
 @main
 struct ColorLensApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var store = ColorStore()
     var body: some Scene {
-        WindowGroup("ColorLens") { ContentView() }
+        WindowGroup("ColorLens") { ContentView().environmentObject(store) }
             .windowResizability(.contentSize)
     }
 }
@@ -20,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 struct ContentView: View {
+    @EnvironmentObject private var store: ColorStore
     @State private var input = "#80007AFF"
     @State private var format: HexFormat = .argb
     @State private var value = ColorValue(red: 0, green: 122, blue: 255, alpha: 128)
@@ -27,6 +29,9 @@ struct ContentView: View {
     @State private var copied: String?
     @State private var sampler = NSColorSampler()
     @AppStorage("preciseAlpha") private var preciseAlpha = false
+    @AppStorage("codeFormat") private var codeFormat: ColorCode = .objectiveC
+    @State private var showImagePicker = false
+    @State private var historyCandidate: ColorValue?
 
     private var color: Color {
         Color(.sRGB, red: Double(value.red)/255, green: Double(value.green)/255,
@@ -34,6 +39,33 @@ struct ContentView: View {
     }
 
     var body: some View {
+        HStack(spacing: 0) {
+            ScrollView { mainContent }.frame(width: 620)
+            Divider()
+            ColorLibraryView(store: store, current: value, valid: error == nil, restore: restore) {
+                historyCandidate = nil
+                store.clearRecent()
+            }.frame(width: 240)
+        }
+        .frame(width: 861, height: 740)
+        .sheet(isPresented: $showImagePicker) {
+            ImagePickerView { color in
+                restore(color)
+                store.record(color)
+            }
+        }
+        .task(id: historyCandidate) {
+            guard let candidate = historyCandidate else { return }
+            do {
+                try await Task.sleep(nanoseconds: 600_000_000)
+                try Task.checkCancellation()
+                guard historyCandidate == candidate else { return }
+                store.record(candidate)
+            } catch {}
+        }
+    }
+
+    private var mainContent: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
@@ -41,6 +73,7 @@ struct ContentView: View {
                     Text("颜色预览 · 屏幕取色 · 格式转换").foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button { showImagePicker = true } label: { Label("图片取色", systemImage: "photo") }
                 Button(action: sample) { Label("屏幕取色", systemImage: "eyedropper") }
                     .controlSize(.large)
             }
@@ -53,6 +86,7 @@ struct ContentView: View {
                     .textFieldStyle(.roundedBorder)
                     .onChange(of: input) { _ in parse() }
                     .onChange(of: format) { _ in parse() }
+                    .onSubmit { if error == nil { store.record(value) } }
                 Text(error ?? "支持 #、0x 和 Objective-C 字符串；6 位为 RGB，8 位按所选格式解析。")
                     .font(.caption).foregroundStyle(error == nil ? Color.secondary : Color.red)
             }
@@ -95,6 +129,20 @@ struct ContentView: View {
                         copy("@\"\(value.hex(.argb))\"", key: "objc")
                     }
                 }
+                Divider()
+                HStack {
+                    Picker("代码", selection: $codeFormat) {
+                        ForEach(ColorCode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }.frame(width: 230).onChange(of: codeFormat) { _ in copied = nil }
+                    Spacer()
+                    Button(copied == "code" ? "已复制" : "复制代码") {
+                        copy(codeFormat.render(value), key: "code")
+                    }
+                }
+                ScrollView(.horizontal) {
+                    Text(codeFormat.render(value)).font(.system(size: 10, design: .monospaced))
+                        .textSelection(.enabled).padding(.vertical, 3)
+                }
             }
             .padding(16).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
             .disabled(error != nil).opacity(error == nil ? 1 : 0.45)
@@ -119,14 +167,20 @@ struct ContentView: View {
 
     private func parse() {
         copied = nil
-        if let parsed = ColorValue.parse(input, format: format) { value = parsed; error = nil }
-        else { error = format == .rgb ? "请输入 6 位十六进制 RGB。" : "请输入 6 位 RGB 或 8 位 \(format.rawValue)；8 位颜色的透明度位置由所选格式决定。" }
+        if let parsed = ColorValue.parse(input, format: format) {
+            value = parsed; error = nil; historyCandidate = parsed
+        } else {
+            error = format == .rgb ? "请输入 6 位十六进制 RGB。" : "请输入 6 位 RGB 或 8 位 \(format.rawValue)；8 位颜色的透明度位置由所选格式决定。"
+            historyCandidate = nil
+        }
     }
 
     private func copy(_ text: String, key: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         copied = key
+        store.record(value)
+        historyCandidate = nil
     }
 
     private func setAlpha(_ alpha: UInt8) {
@@ -135,6 +189,17 @@ struct ContentView: View {
         input = value.hex(format)
         error = nil
         copied = nil
+        historyCandidate = value
+    }
+
+    private func restore(_ color: ColorValue) {
+        // A six-digit RGB string cannot preserve the alpha of a saved color.
+        if format == .rgb && color.alpha != 255 { format = .argb }
+        value = color
+        input = color.hex(format)
+        error = nil
+        copied = nil
+        historyCandidate = color
     }
 
     private func sample() {
@@ -143,10 +208,8 @@ struct ContentView: View {
             func byte(_ channel: CGFloat) -> UInt8 { UInt8((min(1, max(0, channel))*255).rounded()) }
             let sampled = ColorValue(red: byte(rgb.redComponent), green: byte(rgb.greenComponent), blue: byte(rgb.blueComponent))
             Task { @MainActor in
-                value = sampled
-                input = sampled.hex(format)
-                error = nil
-                copied = nil
+                restore(sampled)
+                store.record(sampled)
                 NSApp.activate(ignoringOtherApps: true)
             }
         }

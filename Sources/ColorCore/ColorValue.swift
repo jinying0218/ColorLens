@@ -4,7 +4,7 @@ public enum HexFormat: String, CaseIterable, Sendable {
     case rgb = "RGB", argb = "ARGB", rgba = "RGBA"
 }
 
-public struct ColorValue: Equatable, Sendable {
+public struct ColorValue: Hashable, Codable, Sendable {
     public var red: UInt8
     public var green: UInt8
     public var blue: UInt8
