@@ -33,6 +33,8 @@ struct ContentView: View {
     @State private var showImagePicker = false
     @State private var showComparison = false
     @State private var historyCandidate: ColorValue?
+    @State private var workspace = "颜色"
+    @StateObject private var gradientModel = GradientEditorModel()
 
     private var color: Color {
         Color(.sRGB, red: Double(value.red)/255, green: Double(value.green)/255,
@@ -40,13 +42,28 @@ struct ContentView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            ScrollView { mainContent }.frame(width: 620)
+        VStack(spacing: 0) {
+            HStack {
+                Text("工作区").font(.caption).foregroundStyle(.secondary)
+                Picker("工作区", selection: $workspace) {
+                    Text("颜色").tag("颜色")
+                    Text("渐变色").tag("渐变色")
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 230)
+                Spacer()
+            }.padding(.horizontal, 24).padding(.vertical, 10)
             Divider()
-            ColorLibraryView(store: store, current: value, valid: error == nil, restore: restore) {
-                historyCandidate = nil
-                store.clearRecent()
-            }.frame(width: 240)
+            if workspace == "渐变色" {
+                GradientEditorView(model: gradientModel, currentColor: value)
+            } else {
+                HStack(spacing: 0) {
+                    ScrollView { mainContent }.frame(width: 620)
+                    Divider()
+                    ColorLibraryView(store: store, current: value, valid: error == nil, restore: restore) {
+                        historyCandidate = nil
+                        store.clearRecent()
+                    }.frame(width: 240)
+                }
+            }
         }
         .frame(width: 861, height: 740)
         .sheet(isPresented: $showImagePicker) {

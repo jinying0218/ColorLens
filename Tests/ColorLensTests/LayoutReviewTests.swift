@@ -32,3 +32,24 @@ func captureBackgroundAndComparisonLayouts() throws {
     try capture(ColorCompareView(initial: .init(red: 255, green: 0, blue: 0, alpha: 128), apply: { _ in }),
                 size: NSSize(width: 780, height: 620), name: "colorlens-comparison-layout.png")
 }
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["COLORLENS_CAPTURE_UI"] == "1"))
+@MainActor
+func captureGradientLayoutAndExportCompilerFixtures() throws {
+    let model = GradientEditorModel()
+    model.angle = 135
+    model.add(color: ColorValue(red: 255, green: 200, blue: 0, alpha: 128))
+    model.add(color: ColorValue(red: 120, green: 45, blue: 210))
+    let definition = try #require(model.definition)
+    let folder = FileManager.default.temporaryDirectory
+    for (format, name) in [(GradientCode.objectiveC, "colorlens-gradient.m"), (.swift, "colorlens-gradient-swift.swift"),
+                            (.swiftUI, "colorlens-gradient-swiftui.swift"), (.css, "colorlens-gradient.css")] {
+        try format.render(definition).write(to: folder.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+    let renderer = ImageRenderer(content: GradientEditorView(model: model, currentColor: .init(red: 255, green: 0, blue: 0))
+        .content.frame(width: 861, height: 1040, alignment: .top).background(Color(nsColor: .windowBackgroundColor)))
+    renderer.scale = 2
+    let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+    try #require(bitmap.representation(using: .png, properties: [:]))
+        .write(to: folder.appendingPathComponent("colorlens-gradient-layout.png"))
+}
