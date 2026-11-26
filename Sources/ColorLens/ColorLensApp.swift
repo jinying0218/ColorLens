@@ -31,6 +31,7 @@ struct ContentView: View {
     @AppStorage("preciseAlpha") private var preciseAlpha = false
     @AppStorage("codeFormat") private var codeFormat: ColorCode = .objectiveC
     @State private var showImagePicker = false
+    @State private var showComparison = false
     @State private var historyCandidate: ColorValue?
 
     private var color: Color {
@@ -54,6 +55,12 @@ struct ContentView: View {
                 store.record(color)
             }
         }
+        .sheet(isPresented: $showComparison) {
+            ColorCompareView(initial: value) { color in
+                restore(color)
+                store.record(color)
+            }
+        }
         .task(id: historyCandidate) {
             guard let candidate = historyCandidate else { return }
             do {
@@ -65,7 +72,7 @@ struct ContentView: View {
         }
     }
 
-    private var mainContent: some View {
+    var mainContent: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
@@ -73,6 +80,8 @@ struct ContentView: View {
                     Text("颜色预览 · 屏幕取色 · 格式转换").foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button { showComparison = true } label: { Label("两色对比", systemImage: "circle.lefthalf.filled") }
+                    .disabled(error != nil)
                 Button { showImagePicker = true } label: { Label("图片取色", systemImage: "photo") }
                 Button(action: sample) { Label("屏幕取色", systemImage: "eyedropper") }
                     .controlSize(.large)
@@ -111,6 +120,7 @@ struct ContentView: View {
                     .toggleStyle(.checkbox).font(.caption)
                     .help("开启后按 Alpha 原始值 0～255 调整，并显示一位小数。切换开关不会改变当前颜色。")
             }
+            BackgroundBlendView(foreground: value, valid: error == nil)
             VStack(spacing: 10) {
                 ForEach(HexFormat.allCases, id: \.self) { item in
                     HStack {
