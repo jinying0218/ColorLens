@@ -11,6 +11,17 @@ struct ImagePickerView: View {
     @State private var message: String?
     @State private var hovered: ColorValue?
     @State private var point: CGPoint?
+    @State private var viewport = CGSize(width: 740, height: 420)
+    @State private var fitsWindow = true
+
+    init(initialImage: NSImage? = nil, select: @escaping (ColorValue) -> Void) {
+        self.select = select
+        let decoded = initialImage.flatMap { SampleImage(image: $0) }
+        _image = State(initialValue: decoded)
+        if let decoded {
+            _zoom = State(initialValue: decoded.fittedZoom(width: 740, height: 420))
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -30,14 +41,22 @@ struct ImagePickerView: View {
                     Text("\(image.width) × \(image.height) 像素").foregroundStyle(.secondary)
                     Spacer()
                     Button("适合窗口") { fit(image) }
-                    Button("100%") { zoom = 1 }
-                    Slider(value: $zoom, in: 0.05...8).frame(width: 170)
+                    Button("100%") { fitsWindow = false; zoom = 1 }
+                    Slider(value: Binding(get: { zoom }, set: { fitsWindow = false; zoom = $0 }), in: 0.05...8)
+                        .frame(width: 170).accessibilityLabel("图片缩放")
                     Text("\(Int((zoom*100).rounded()))%").monospacedDigit().frame(width: 48, alignment: .trailing)
                 }.font(.caption)
-                ImageCanvas(image: image, zoom: zoom) { color, x, y, picked in
-                    hovered = color
-                    point = CGPoint(x: x, y: y)
-                    if picked { select(color) }
+                GeometryReader { geometry in
+                    ImageCanvas(image: image, zoom: zoom) { color, x, y, picked in
+                        hovered = color
+                        point = CGPoint(x: x, y: y)
+                        if picked { select(color) }
+                    }
+                    .onAppear { viewport = geometry.size; if fitsWindow { fit(image) } }
+                    .onChange(of: geometry.size) { size in
+                        viewport = size
+                        if fitsWindow { fit(image) }
+                    }
                 }
                 .background(Color(white: 0.22))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -67,7 +86,8 @@ struct ImagePickerView: View {
                         .font(.caption).foregroundStyle(message == nil ? Color.secondary : Color.red)
                 }
             }.frame(height: 30)
-        }.padding(22).frame(width: 820, height: 620)
+        }.padding(22).frame(minWidth: 700, idealWidth: 820, maxWidth: .infinity,
+                           minHeight: 480, idealHeight: 620, maxHeight: .infinity)
     }
 
     private func load(_ source: NSImage?) {
@@ -83,7 +103,8 @@ struct ImagePickerView: View {
     }
 
     private func fit(_ image: SampleImage) {
-        zoom = max(0.05, min(1, min(740 / Double(image.width), 420 / Double(image.height))))
+        fitsWindow = true
+        zoom = image.fittedZoom(width: max(1, viewport.width-16), height: max(1, viewport.height-16))
     }
 
     private func paste() { load(NSImage(pasteboard: .general)) }

@@ -13,11 +13,11 @@ struct ColorCompareView: View {
     @State private var backdrop = "白色"
     @State private var copied = false
 
-    init(initial: ColorValue, apply: @escaping (ColorValue) -> Void) {
+    init(initial: ColorValue, actual: ColorValue? = nil, apply: @escaping (ColorValue) -> Void) {
         self.initial = initial
         self.apply = apply
         _referenceText = State(initialValue: initial.hex(.argb))
-        _actualText = State(initialValue: initial.hex(.argb))
+        _actualText = State(initialValue: (actual ?? initial).hex(.argb))
     }
 
     private var reference: ColorValue? { ColorValue.parse(referenceText, format: referenceFormat) }
@@ -64,7 +64,8 @@ struct ColorCompareView: View {
             Text("差值为 B − A；RGB 和 Alpha 为原始 0～255 通道差，不透明度以百分点比较。")
                 .font(.caption2).foregroundStyle(.secondary)
         }
-        .padding(24).frame(width: 780)
+        .padding(24).frame(minWidth: 700, idealWidth: 780, maxWidth: .infinity,
+                          minHeight: 580, idealHeight: 640, maxHeight: .infinity, alignment: .top)
         .onChange(of: referenceText) { _ in copied = false }
         .onChange(of: actualText) { _ in copied = false }
         .onChange(of: referenceFormat) { _ in copied = false }

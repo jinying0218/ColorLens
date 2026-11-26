@@ -7,6 +7,11 @@ public final class SampleImage {
     public let height: Int
     private let bitmap: NSBitmapImageRep
 
+    public func fittedZoom(width: Double, height: Double) -> Double {
+        guard width.isFinite, height.isFinite, width > 0, height > 0 else { return 0.05 }
+        return max(0.05, min(1, min(width/Double(self.width), height/Double(self.height))))
+    }
+
     public init?(image: NSImage) {
         guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         bitmap = NSBitmapImageRep(cgImage: cg)

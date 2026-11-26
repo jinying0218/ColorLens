@@ -8,7 +8,8 @@ struct ColorLensApp: App {
     @StateObject private var store = ColorStore()
     var body: some Scene {
         WindowGroup("ColorLens") { ContentView().environmentObject(store) }
-            .windowResizability(.contentSize)
+            .defaultSize(width: 1000, height: 820)
+            .windowResizability(.contentMinSize)
     }
 }
 
@@ -36,6 +37,11 @@ struct ContentView: View {
     @State private var workspace = "颜色"
     @StateObject private var gradientModel = GradientEditorModel()
 
+    init(initialWorkspace: String = "颜色", gradient: GradientEditorModel? = nil) {
+        _workspace = State(initialValue: initialWorkspace)
+        _gradientModel = StateObject(wrappedValue: gradient ?? GradientEditorModel())
+    }
+
     private var color: Color {
         Color(.sRGB, red: Double(value.red)/255, green: Double(value.green)/255,
               blue: Double(value.blue)/255, opacity: Double(value.alpha)/255)
@@ -55,17 +61,23 @@ struct ContentView: View {
             if workspace == "渐变色" {
                 GradientEditorView(model: gradientModel, currentColor: value)
             } else {
-                HStack(spacing: 0) {
-                    ScrollView { mainContent }.frame(width: 620)
-                    Divider()
-                    ColorLibraryView(store: store, current: value, valid: error == nil, restore: restore) {
-                        historyCandidate = nil
-                        store.clearRecent()
-                    }.frame(width: 240)
+                GeometryReader { geometry in
+                    if geometry.size.width >= 880 {
+                        HSplitView {
+                            ScrollView { mainContent }.frame(minWidth: 580, maxWidth: .infinity)
+                            libraryView.frame(minWidth: 220, idealWidth: 240, maxWidth: 320)
+                        }
+                    } else {
+                        ScrollView {
+                            mainContent
+                            Divider()
+                            libraryView.frame(height: 340)
+                        }
+                    }
                 }
             }
         }
-        .frame(width: 861, height: 740)
+        .frame(minWidth: 680, maxWidth: .infinity, minHeight: 480, maxHeight: .infinity)
         .sheet(isPresented: $showImagePicker) {
             ImagePickerView { color in
                 restore(color)
@@ -86,6 +98,13 @@ struct ContentView: View {
                 guard historyCandidate == candidate else { return }
                 store.record(candidate)
             } catch {}
+        }
+    }
+
+    private var libraryView: some View {
+        ColorLibraryView(store: store, current: value, valid: error == nil, restore: restore) {
+            historyCandidate = nil
+            store.clearRecent()
         }
     }
 
@@ -176,7 +195,7 @@ struct ContentView: View {
             Text("sRGB · 屏幕取色得到的是合成后的颜色，透明度默认 100%，可手动调整。")
                 .font(.caption).foregroundStyle(.secondary)
         }
-        .padding(28).frame(width: 620)
+        .padding(28).frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func preview(_ title: String, background: Color?) -> some View {

@@ -1,76 +1,83 @@
 import AppKit
 import SwiftUI
 
-/// The native cell owns both the thumb travel and the tick positions.
-struct OpacitySlider: NSViewRepresentable {
+struct OpacityTrackMetrics {
+    let width: CGFloat
+    let inset: CGFloat = 22
+    var travel: CGFloat { max(1, width-inset*2) }
+    func x(for percent: Double) -> CGFloat { inset + travel*CGFloat(min(100, max(0, percent)))/100 }
+    func percent(at x: CGFloat) -> Double { Double(min(1, max(0, (x-inset)/travel)))*100 }
+}
+
+/// Track, thumb and clickable ticks share one coordinate system at every width.
+struct OpacitySlider: View {
     var percent: Double
     var precise: Bool
     var enabled: Bool
     var onChange: (Double) -> Void
+    @FocusState private var focused: Bool
 
-    func makeNSView(context: Context) -> OpacitySliderView { OpacitySliderView() }
+    private var displayedPercent: Double { precise ? percent : percent.rounded() }
 
-    func updateNSView(_ view: OpacitySliderView, context: Context) {
-        view.precise = precise
-        view.onChange = onChange
-        view.slider.isEnabled = enabled
-        view.slider.doubleValue = precise ? percent : percent.rounded()
-        view.slider.altIncrementValue = precise ? 100 / 255 : 1
-        for button in view.buttons { button.isEnabled = enabled }
-    }
-}
-
-final class OpacitySliderView: NSView {
-    let slider = NSSlider(value: 0, minValue: 0, maxValue: 100, target: nil, action: nil)
-    private(set) var buttons: [NSButton] = []
-    var precise = false
-    var onChange: ((Double) -> Void)?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        slider.numberOfTickMarks = 11
-        slider.tickMarkPosition = .below
-        slider.allowsTickMarkValuesOnly = false
-        slider.isContinuous = true
-        slider.target = self
-        slider.action = #selector(sliderChanged)
-        slider.setAccessibilityLabel("透明度")
-        addSubview(slider)
-        for index in 0...10 {
-            let button = NSButton(title: "\(index * 10)%", target: self, action: #selector(tickClicked(_:)))
-            button.tag = index
-            button.isBordered = false
-            button.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-            button.contentTintColor = .secondaryLabelColor
-            button.setAccessibilityLabel("设置透明度为 \(index * 10)%")
-            buttons.append(button)
-            addSubview(button)
+    var body: some View {
+        GeometryReader { geometry in
+            let metrics = OpacityTrackMetrics(width: geometry.size.width)
+            ZStack(alignment: .topLeading) {
+                ZStack(alignment: .topLeading) {
+                    Capsule().fill(Color.secondary.opacity(0.2))
+                        .frame(width: metrics.travel, height: 4).position(x: geometry.size.width/2, y: 12)
+                    Capsule().fill(Color.accentColor)
+                        .frame(width: max(0, metrics.x(for: displayedPercent)-metrics.inset), height: 4)
+                        .position(x: (metrics.inset+metrics.x(for: displayedPercent))/2, y: 12)
+                    Circle().fill(Color(nsColor: .controlBackgroundColor))
+                        .overlay(Circle().stroke(focused ? Color.accentColor : Color.black.opacity(0.15), lineWidth: focused ? 2 : 0.5))
+                        .shadow(color: .black.opacity(0.2), radius: 1.5, y: 1)
+                        .frame(width: 16, height: 16).position(x: metrics.x(for: displayedPercent), y: 12)
+                }
+                .frame(width: geometry.size.width, height: 24)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { event in
+                    guard enabled else { return }
+                    focused = true
+                    setPercent(metrics.percent(at: event.location.x))
+                })
+                ForEach(0...10, id: \.self) { index in
+                    let value = index*10
+                    Button { setPercent(Double(value)) } label: {
+                        VStack(spacing: 3) {
+                            Rectangle().frame(width: 1, height: 5)
+                            Text("\(value)%").font(.system(size: 10)).monospacedDigit()
+                        }.frame(width: 44, height: 24).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Int(displayedPercent.rounded()) == value ? Color.accentColor : Color.secondary)
+                    .accessibilityLabel("设置透明度为 \(value)%")
+                    .position(x: metrics.x(for: Double(value)), y: 36)
+                }
+            }
+        }
+        .frame(height: 48).disabled(!enabled).opacity(enabled ? 1 : 0.45)
+        .focusable(enabled).focused($focused)
+        .onMoveCommand { direction in
+            guard enabled else { return }
+            let step = precise ? 100.0/255 : 1
+            if direction == .left || direction == .down { setPercent(displayedPercent-step) }
+            if direction == .right || direction == .up { setPercent(displayedPercent+step) }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("透明度")
+        .accessibilityValue(String(format: precise ? "%.1f%%" : "%.0f%%", displayedPercent))
+        .accessibilityAdjustableAction { direction in
+            guard enabled else { return }
+            let step = precise ? 100.0/255 : 1
+            if direction == .increment { setPercent(displayedPercent+step) }
+            if direction == .decrement { setPercent(displayedPercent-step) }
         }
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func layout() {
-        super.layout()
-        // Reserve enough room for the end labels, then use the cell's real ticks.
-        slider.frame = NSRect(x: 16, y: 24, width: max(0, bounds.width - 32), height: 24)
-        guard let cell = slider.cell as? NSSliderCell else { return }
-        for (index, button) in buttons.enumerated() {
-            let tick = convert(cell.rectOfTickMark(at: index), from: slider)
-            button.frame = NSRect(x: tick.midX - 22, y: 0, width: 44, height: 22)
-        }
-    }
-
-    @objc private func sliderChanged() {
-        let raw = slider.doubleValue
-        let percent = precise ? (raw / 100 * 255).rounded() / 255 * 100 : raw.rounded()
-        slider.doubleValue = percent
-        onChange?(percent)
-    }
-
-    @objc private func tickClicked(_ sender: NSButton) {
-        let percent = Double(sender.tag * 10)
-        slider.doubleValue = percent
-        onChange?(percent)
+    private func setPercent(_ value: Double) {
+        guard enabled else { return }
+        let bounded = min(100, max(0, value))
+        onChange(precise ? (bounded/100*255).rounded()/255*100 : bounded.rounded())
     }
 }
